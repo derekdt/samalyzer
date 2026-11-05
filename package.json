@@ -15,7 +15,8 @@
     "trades": "node src/trades.js",
     "qqq-tables": "node src/qqqTables.js",
     "strategy": "node src/strategy.js",
-    "investing-basics": "node src/investingBasics.js"
+    "investing-basics": "node src/investingBasics.js",
+    "relink": "node src/relink.js"
   },
   "engines": {
     "node": ">=18"

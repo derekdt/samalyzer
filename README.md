@@ -67,6 +67,17 @@ All generated output lives under `./gen/` (gitignored in full, so future sibling
 
 The whole `gen/` folder is gitignored.
 
+## Previous / Next links
+
+`npm run relink` points each saved briefing's **Previous** and **Next** buttons at the neighbouring briefing's local `source/index.html` instead of the live site, so you can page through the archive offline. Briefings are matched by the `url` in each folder's `metadata.json`. It covers `gen/daily-briefings/` and `gen/articles/`. An article's neighbours are usually daily briefings, so links fall back to `gen/daily-briefings/` when the target isn't another article. Links to anything not on disk stay pointing at the site.
+
+```bash
+npm run relink               # relink both folders
+npm run relink -- --dry-run  # report what would change
+```
+
+It's safe to re-run, and it runs automatically at the end of `npm start` / `npm run articles` whenever new briefings were exported. One limit: the newest briefing on the day it's exported has no **Next** button, because the site doesn't show one yet. Relinking can't add a missing button. Delete that briefing's folder and re-run the export later to pick it up.
+
 ## Articles
 
 `npm run articles` runs the same export as `npm start`, against the Articles archive (`/category/articles/`) instead of `/blog-2/`. Output goes to `./gen/articles/` in the same layout (`YYYY-MM-DD_slug/export.pdf`, `metadata.json`, `source/`), with its own `registry.json`. Every `npm start` flag works, e.g. `npm run articles -- --dry-run`.

@@ -9,6 +9,7 @@ const { listArticles } = require('./discover');
 const { exportArticle } = require('./exportArticle');
 const { Manifest } = require('./manifest');
 const { Registry } = require('./registry');
+const { relinkCollection, logStats } = require('./relink');
 
 function loadConfig() {
   const cfgPath = path.resolve(__dirname, '..', 'config.json');
@@ -209,6 +210,13 @@ async function run() {
   log(
     `done — exported=${stats.exported} skipped=${stats.skipped} failed=${stats.failed}`
   );
+
+  // New briefings' neighbours were saved with live Previous / Next links;
+  // point them (and the new ones) at the local copies.
+  if (stats.exported > 0) {
+    logStats(collectionName, relinkCollection(config.outputDir));
+  }
+
   if (stats.failed > 0) process.exitCode = 1;
 }
 
