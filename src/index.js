@@ -37,7 +37,7 @@ Samalyzer — Sam Weiss Newsletter Daily Briefing Archiver
 Usage:
   npm start                               Full run: login, discover, export missing daily briefings.
   npm start -- --dry-run                  Discover + list work queue, no daily briefings.
-  npm start -- --force                    Re-export everything, ignoring manifest.
+  npm start -- --force                    Re-export everything, even briefings already on disk.
   npm start -- --url <article-url>        Export a single article URL (still logs in).
   npm start -- --headless=false           Run with a visible browser window.
   npm start -- --max-pages <N>            Stop discovery after N archive pages.
@@ -62,11 +62,10 @@ async function run() {
 
   const genDir = path.resolve(config.genDir || './gen');
   config.outputDir = path.join(genDir, 'daily-briefings');
-  config.manifestPath = path.join(genDir, 'manifest.json');
-  config.registryPath = path.join(genDir, 'registry.json');
+  config.registryPath = path.join(config.outputDir, 'registry.json');
 
   if (!fs.existsSync(config.outputDir)) fs.mkdirSync(config.outputDir, { recursive: true });
-  const manifest = new Manifest(config.manifestPath);
+  const manifest = new Manifest(config.outputDir);
   const registry = new Registry(config.registryPath);
 
   const dryRun = Boolean(flags['dry-run']);
@@ -78,7 +77,13 @@ async function run() {
   const maxArticles = config.maxArticles ? Number(config.maxArticles) : null;
 
   log(`config: headless=${config.headless}, genDir=${genDir}`);
-  log(`manifest: ${manifest.count()} articles already exported`);
+  log(`on disk: ${manifest.count()} briefings already exported`);
+  if (manifest.incomplete.length) {
+    log(
+      `on disk: ${manifest.incomplete.length} incomplete briefing folder(s), missing export.pdf, ` +
+        `source/index.html or metadata.json (re-exported if listed in the registry): ${manifest.incomplete.join(', ')}`
+    );
+  }
 
   const browser = await puppeteer.launch({
     headless: config.headless,
@@ -139,13 +144,11 @@ async function run() {
         return;
       }
 
-      queue = [];
-      for (const article of registry.articles()) {
-        if (!force && manifest.has(article.url)) break;
-        queue.push(article);
-      }
+      // Every registry article without a complete folder on disk, newest
+      // first — including older ones whose earlier export failed.
+      queue = registry.articles().filter((article) => force || !manifest.has(article.url));
       stats.skipped = registry.count() - queue.length;
-      log(`${queue.length} queued for export, ${stats.skipped} already in manifest`);
+      log(`${queue.length} queued for export, ${stats.skipped} already exported`);
     }
 
     if (maxArticles && queue.length > maxArticles) {
@@ -166,13 +169,9 @@ async function run() {
       log(`[${i + 1}/${queue.length}] ${article.url}`);
       try {
         const result = await exportArticle(page, article, config);
-        const exportPathFromGen = path
-          .relative(genDir, path.dirname(result.path))
-          .split(path.sep)
-          .join('/');
         manifest.record(article.url, {
           publishedDate: article.publishedDate,
-          exportPath: exportPathFromGen,
+          exportPath: path.basename(path.dirname(result.path)),
         });
         stats.exported++;
       } catch (err) {

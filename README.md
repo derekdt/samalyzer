@@ -2,7 +2,7 @@
 
 Sam Weiss newsletter daily briefing archiver.
 
-Logs into your paid https://sam-weiss.com/ subscription, walks the full `/blog-2/` archive, and saves each article — with every comment and reply expanded — as a daily briefing PDF. Tracks exported articles in a local manifest so repeat runs only fetch new briefings.
+Logs into your paid https://sam-weiss.com/ subscription, walks the full `/blog-2/` archive, and saves each article — with every comment and reply expanded — as a daily briefing PDF. Repeat runs skip briefings already on disk, so they only fetch new ones.
 
 ## Setup
 
@@ -30,7 +30,7 @@ npm start
 # Discover only — print the queue, do not export.
 npm start -- --dry-run
 
-# Re-export everything, ignoring the manifest.
+# Re-export everything, even briefings already on disk.
 npm start -- --force
 
 # Export a single article (useful for testing).
@@ -58,7 +58,8 @@ All generated output lives under `./gen/` (gitignored in full, so future sibling
   - fonts and background images referenced from downloaded CSS **and** inline `<style>` blocks / `style=""` attributes → `source/assets/`
 
   Scripts, favicons, and decorative avatars/emoji (Gravatar, `s.w.org`) are intentionally **not** downloaded. Open `index.html` directly from disk without a network connection.
-- Manifest: `./gen/manifest.json` — a compact index of exported URLs. Each entry stores only `publishedDate`, `exportedAt`, and `exportPath` (the briefing folder relative to `gen/`, e.g. `daily-briefings/2026-04-17_slug`). All other details live inside each briefing's own `metadata.json`. Delete an entry to force a re-export on the next run.
+- Registry: `./gen/daily-briefings/registry.json` — every article found in the archive (`url`, `title`, `publishedDate`), newest first. Discovery stops at the first article already in the registry, so routine runs only read the first archive page or two.
+- What's already exported is not stored anywhere: each run scans the briefing folders. A briefing counts as exported when its folder has `export.pdf`, `source/index.html` and `metadata.json` (the URL comes from `metadata.json`). Every registry article without a complete folder is exported, oldest gaps included. To force one briefing to re-export, delete its folder.
 
 The whole `gen/` folder is gitignored.
 
@@ -133,6 +134,24 @@ Each CSV has:
 
 The page is read with JavaScript disabled, so rows come out in Sam's published order rather than whatever sort the interactive table widget applies.
 
+## Samwise Strategy pages
+
+`npm run strategy` saves the four Samwise Strategy pages as self-contained HTML, the same way the daily briefing export saves each article's source (no PDF):
+
+| Page | Output |
+| --- | --- |
+| Executive Summary (`/samwise/samwise-strategies/`) | `gen/samwise-strategy/executive-summary/` |
+| 4-Part Framework (`/samwise/samwise-strategies/4-part-framework/`) | `gen/samwise-strategy/4-part-framework/` |
+| High-Pro Strategy (`/samwise/samwise-strategies/high-pro/`) | `gen/samwise-strategy/high-pro-strategy/` |
+| Samwise Rule of Investing (`/samwise/samwise-strategies4/`) | `gen/samwise-strategy/samwise-rule-of-investing/` |
+
+Each folder has `source/index.html` (with `images/`, `styles/` and `assets/` beside it) and a `metadata.json` (`name`, `url`, `slug`, `title`, `exportedAt`, `sourcePath`). Before saving:
+
+- every collapsed "click to expand" section is opened, so the saved page shows all of its content
+- the tab buttons and menu links that point to one of these four pages are rewritten to the local copy, so you can move between the exports offline
+
+Each run overwrites the four exports. The page list lives in `strategyPages` in `config.json`.
+
 ## Configuration
 
 `config.json` (committed) controls everything that isn't a secret:
@@ -140,8 +159,9 @@ The page is read with JavaScript disabled, so rows come out in Sam's published o
 | Key | Purpose |
 | --- | --- |
 | `baseUrl`, `archivePath`, `loginPath`, `tradesPath`, `qqqTablesPath` | Site URLs. |
+| `strategyPages` | `[{ name, path }]` pages saved by `npm run strategy`; the folder name is the slugged `name`. |
 | `portfolioTypes` | Portfolio name → `options` / `common_stock`, used for `type` in `trades.json`. |
-| `genDir` | Root directory for all generated output. `daily-briefings/` and `manifest.json` are created underneath it. |
+| `genDir` | Root directory for all generated output: `daily-briefings/` (with its `registry.json`), `trades.json`, `qqq-tables/`, `samwise-strategy/`. |
 | `delayBetweenArticlesMs`, `delayBetweenPagesMs` | `[min, max]` random delays in ms. Be polite. |
 | `pdfFormat` | `"Letter"`, `"A4"`, etc. — any Puppeteer format string. |
 | `headless` | `true` for background runs, `false` for visible browser. |

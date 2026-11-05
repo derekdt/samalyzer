@@ -118,44 +118,7 @@ async function exportArticle(page, articleMeta, config) {
   const result = { path: paths.pdf, exportPath: paths.slug, title, commentCount };
 
   try {
-    fs.mkdirSync(paths.sourceDir, { recursive: true });
-    const renderedHtml = await page.content();
-
-    const cookieHeader = await buildCookieHeader(page);
-    let baseHost = '';
-    try {
-      baseHost = new URL(url).host;
-    } catch {}
-    const fetchResource = makeFetcher(cookieHeader, baseHost);
-    const assetCache = new Map();
-
-    const imageMapping = await downloadImages(page, url, paths.imagesDir);
-    const stylesheetMapping = await downloadStylesheets(
-      page,
-      url,
-      paths.stylesDir,
-      paths.assetsDir,
-      fetchResource,
-      assetCache
-    );
-
-    let localized = renderedHtml;
-    localized = rewriteImageReferences(localized, imageMapping);
-    localized = rewriteStylesheetReferences(localized, stylesheetMapping);
-    localized = await localizeInlineCss(
-      localized,
-      url,
-      paths.assetsDir,
-      fetchResource,
-      assetCache
-    );
-
-    fs.writeFileSync(paths.html, localized, 'utf8');
-    log(
-      `wrote ${paths.html} ` +
-        `(${imageMapping.size} image(s), ${stylesheetMapping.size} stylesheet(s), ` +
-        `${assetCache.size} css-asset(s) localized)`
-    );
+    await saveSourceHtml(page, url, paths);
     result.htmlPath = paths.html;
   } catch (err) {
     logError(`failed to write source HTML for ${url}: ${err.message}`);
@@ -180,6 +143,45 @@ async function exportArticle(page, articleMeta, config) {
   }
 
   return result;
+}
+
+// Save the page's current DOM as a self-contained index.html: images,
+// stylesheets (and their @imports), and CSS-referenced fonts/backgrounds are
+// downloaded next to it and references rewritten to the local copies.
+// paths: { sourceDir, html, imagesDir, stylesDir, assetsDir }
+async function saveSourceHtml(page, url, paths) {
+  fs.mkdirSync(paths.sourceDir, { recursive: true });
+  const renderedHtml = await page.content();
+
+  const cookieHeader = await buildCookieHeader(page);
+  let baseHost = '';
+  try {
+    baseHost = new URL(url).host;
+  } catch {}
+  const fetchResource = makeFetcher(cookieHeader, baseHost);
+  const assetCache = new Map();
+
+  const imageMapping = await downloadImages(page, url, paths.imagesDir);
+  const stylesheetMapping = await downloadStylesheets(
+    page,
+    url,
+    paths.stylesDir,
+    paths.assetsDir,
+    fetchResource,
+    assetCache
+  );
+
+  let localized = renderedHtml;
+  localized = rewriteImageReferences(localized, imageMapping);
+  localized = rewriteStylesheetReferences(localized, stylesheetMapping);
+  localized = await localizeInlineCss(localized, url, paths.assetsDir, fetchResource, assetCache);
+
+  fs.writeFileSync(paths.html, localized, 'utf8');
+  log(
+    `wrote ${paths.html} ` +
+      `(${imageMapping.size} image(s), ${stylesheetMapping.size} stylesheet(s), ` +
+      `${assetCache.size} css-asset(s) localized)`
+  );
 }
 
 async function downloadImages(page, baseUrl, imagesDir) {
@@ -776,4 +778,4 @@ async function expandAllComments(page, { selectors, textPatterns }) {
   return { clicks: totalClicks, passes };
 }
 
-module.exports = { exportArticle };
+module.exports = { exportArticle, saveSourceHtml, ensureAllImagesLoaded, unwrapImageLinks };

@@ -1,57 +1,66 @@
 const fs = require('fs');
 const path = require('path');
 
+// Which articles are already exported, worked out from the briefing folders on
+// disk instead of a stored file. A briefing counts as exported only when its
+// folder has all three of export.pdf, source/index.html and metadata.json;
+// anything less is re-exported (into the same folder) on the next run.
 class Manifest {
-  constructor(filePath) {
-    this.filePath = path.resolve(filePath);
-    this.data = { exportedDailyBriefings: {} };
-    this._load();
+  constructor(outputDir) {
+    this.outputDir = path.resolve(outputDir);
+    this.exported = new Map(); // url -> { publishedDate, exportPath, exportedAt }
+    this.incomplete = []; // folder names missing one of the three files
+    this._scan();
   }
 
-  _load() {
-    if (!fs.existsSync(this.filePath)) return;
-    try {
-      const raw = fs.readFileSync(this.filePath, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && parsed.exportedDailyBriefings) {
-        this.data = parsed;
+  _scan() {
+    if (!fs.existsSync(this.outputDir)) return;
+    for (const entry of fs.readdirSync(this.outputDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(this.outputDir, entry.name);
+      const metadataPath = path.join(dir, 'metadata.json');
+      const complete =
+        fs.existsSync(metadataPath) &&
+        fs.existsSync(path.join(dir, 'export.pdf')) &&
+        fs.existsSync(path.join(dir, 'source', 'index.html'));
+      if (!complete) {
+        this.incomplete.push(entry.name);
+        continue;
       }
-    } catch (err) {
-      throw new Error(`Failed to parse manifest at ${this.filePath}: ${err.message}`);
+      let metadata;
+      try {
+        metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+      } catch {
+        this.incomplete.push(entry.name);
+        continue;
+      }
+      if (!metadata.url) {
+        this.incomplete.push(entry.name);
+        continue;
+      }
+      this.exported.set(metadata.url, {
+        publishedDate: metadata.publishedDate || null,
+        exportPath: entry.name,
+        exportedAt: metadata.exportedAt || null,
+      });
     }
   }
 
   has(url) {
-    return Boolean(this.data.exportedDailyBriefings[url]);
+    return this.exported.has(url);
   }
 
   get(url) {
-    return this.data.exportedDailyBriefings[url];
+    return this.exported.get(url);
   }
 
+  // Note an export made during this run (the folder itself is the record).
   record(url, meta) {
-    this.data.exportedDailyBriefings[url] = {
-      ...meta,
-      exportedAt: new Date().toISOString(),
-    };
-    this._save();
-  }
-
-  remove(url) {
-    delete this.data.exportedDailyBriefings[url];
-    this._save();
+    this.exported.set(url, { ...meta, exportedAt: new Date().toISOString() });
   }
 
   count() {
-    return Object.keys(this.data.exportedDailyBriefings).length;
-  }
-
-  _save() {
-    const dir = path.dirname(this.filePath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const tmp = `${this.filePath}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2), 'utf8');
-    fs.renameSync(tmp, this.filePath);
+    return this.exported.size;
   }
 }
 

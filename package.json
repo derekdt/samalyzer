@@ -12,7 +12,8 @@
   "scripts": {
     "start": "node src/index.js",
     "trades": "node src/trades.js",
-    "qqq-tables": "node src/qqqTables.js"
+    "qqq-tables": "node src/qqqTables.js",
+    "strategy": "node src/strategy.js"
   },
   "engines": {
     "node": ">=18"

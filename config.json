@@ -4,6 +4,12 @@
   "loginPath": "/wp-login.php",
   "tradesPath": "/app/trades/",
   "qqqTablesPath": "/nasdaq-100-qqq-corrections-rallies/",
+  "strategyPages": [
+    { "name": "Executive Summary", "path": "/samwise/samwise-strategies/" },
+    { "name": "4-Part Framework", "path": "/samwise/samwise-strategies/4-part-framework/" },
+    { "name": "High-Pro Strategy", "path": "/samwise/samwise-strategies/high-pro/" },
+    { "name": "Samwise Rule of Investing", "path": "/samwise/samwise-strategies4/" }
+  ],
   "portfolioTypes": {
     "Hightower": "options",
     "Stark": "options",
