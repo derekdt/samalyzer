@@ -1,0 +1,22 @@
+{
+  "name": "samalyzer",
+  "version": "1.0.0",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/derekdt/samalyzer.git"
+  },
+  "description": "Logs into sam-weiss.com, walks the /blog-2/ archive, and exports each article (with all comments and replies expanded) as a daily briefing PDF.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "puppeteer": "^24.15.0"
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "baseUrl": "https://sam-weiss.com",
+  "archivePath": "/blog-2/",
+  "loginPath": "/wp-login.php",
+  "genDir": "./gen",
+  "maxSlugLength": 80,
+  "delayBetweenArticlesMs": [2000, 5000],
+  "delayBetweenPagesMs": [1500, 3000],
+  "pdfFormat": "Letter",
+  "headless": true,
+  "maxPages": null,
+  "maxArticles": null,
+  "navigationTimeoutMs": 60000,
+  "articleBodySelectors": [
+    "article .entry-content",
+    ".entry-content",
+    ".post-content",
+    "article"
+  ],
+  "commentExpanderSelectors": [
+    ".wpd-load-more-replies",
+    ".wpd-view-replies",
+    ".wpd-load-more-submit",
+    ".wpdiscuz-readmore",
+    ".comments-more",
+    ".comment-reply-load-more",
+    "button.load-more-comments",
+    "a.load-more-comments"
+  ],
+  "commentExpanderTextPatterns": [
+    "load more",
+    "show more",
+    "view more",
+    "view replies",
+    "view \\d+ repl",
+    "read more"
+  ],
+  "paywallMarker": "Please login or subscribe",
+  "printHideRules": [
+    {
+      "name": "Site chrome (top nav, footer bar, admin bar)",
+      "selectors": [
+        "body > header",
+        "body > footer",
+        ".site-header",
+        ".site-footer",
+        "#masthead",
+        "#colophon",
+        "#wpadminbar",
+        ".wp-block-navigation",
+        ".main-navigation"
+      ]
+    },
+    {
+      "name": "Sidebars and widget areas",
+      "selectors": ["aside", ".sidebar", "#sidebar", ".widget-area"]
+    },
+    {
+      "name": "Subscribe / paywall / membership CTAs",
+      "selectors": [".subscribe-cta", ".subscribe", ".paywall", ".membership-cta"]
+    },
+    {
+      "name": "Sam Weiss site-specific \"Samwise Quick Reference Handbook\" block",
+      "selectors": [".daily-briefing-code"]
+    },
+    {
+      "name": "wpDiscuz floating comment-count bubble (bottom-left green circle)",
+      "selectors": [
+        "#wpd-bubble-wrapper",
+        ".wpd-bubble-wrapper",
+        ".wpd-floating-button",
+        ".wpd-bubble",
+        ".wpd-bubble-count",
+        "#wpd-bubble",
+        ".wpdiscuz-comment-bubble"
+      ]
+    },
+    {
+      "name": "Generic floating buttons (scroll-to-top, etc.)",
+      "selectors": [
+        ".back-to-top",
+        ".scroll-to-top",
+        ".scrolltop",
+        "#scroll-top",
+        "[class*=\"floating-button\"]",
+        "[id*=\"floating-button\"]"
+      ]
+    },
+    {
+      "name": "Comment-submission form (the \"write a comment\" textarea + submit)",
+      "selectors": [
+        ".wpd-comment-form",
+        "#respond",
+        ".comment-respond",
+        ".wpd-main-form-wrapper",
+        "#wpd-editor-0_0",
+        ".wpd-form-wrapper"
+      ]
+    },
+    {
+      "name": "\"Article Rating\" stars widget above the comments",
+      "selectors": [
+        ".wpd-post-rating",
+        ".wpd-post-rating-wrap",
+        "#wpd-post-rating",
+        ".wpdiscuz-post-rating-wrap",
+        ".wpdiscuz-rating",
+        ".wpd-rating",
+        "[class*=\"post-rating\"]",
+        "[class*=\"wpd-rating\"]"
+      ]
+    },
+    {
+      "name": "wpDiscuz \"Subscribe\" dropdown + \"You are logged in as\" banner (both inside .wpd-form-head)",
+      "selectors": [".wpd-form-head"]
+    },
+    {
+      "name": "\"Related Posts\" / share-this blocks below the article",
+      "selectors": [
+        ".sharedaddy",
+        ".jp-relatedposts",
+        ".related-posts",
+        ".yarpp-related",
+        ".wp-related-posts",
+        "#related_posts",
+        "#related-posts",
+        ".related",
+        ".related-articles",
+        ".post-related",
+        "section.related",
+        "[class*=\"related-post\"]",
+        "[class*=\"relatedposts\"]",
+        "[id*=\"related-post\"]",
+        "[class*=\"yarpp\"]"
+      ]
+    }
+  ]
+}
