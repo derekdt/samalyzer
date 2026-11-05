@@ -11,9 +11,11 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/index.js",
+    "articles": "node src/index.js --collection articles",
     "trades": "node src/trades.js",
     "qqq-tables": "node src/qqqTables.js",
-    "strategy": "node src/strategy.js"
+    "strategy": "node src/strategy.js",
+    "investing-basics": "node src/investingBasics.js"
   },
   "engines": {
     "node": ">=18"

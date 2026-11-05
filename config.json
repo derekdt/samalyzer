@@ -1,9 +1,20 @@
 {
   "baseUrl": "https://sam-weiss.com",
   "archivePath": "/blog-2/",
+  "articlesArchivePath": "/category/articles/",
   "loginPath": "/wp-login.php",
   "tradesPath": "/app/trades/",
   "qqqTablesPath": "/nasdaq-100-qqq-corrections-rallies/",
+  "investingBasics": {
+    "indexPath": "/investing-basics/",
+    "chapters": [
+      { "number": 1, "path": "/investing-basics/time/" },
+      { "number": 2, "path": "/investing-basics/inherent-leverage/" },
+      { "number": 3, "path": "/investing-basics/risk-management-1/" },
+      { "number": 4, "path": "/investing-basics/options/" },
+      { "number": 5, "path": "/investing-basics/chapter-5-1/" }
+    ]
+  },
   "strategyPages": [
     { "name": "Executive Summary", "path": "/samwise/samwise-strategies/" },
     { "name": "4-Part Framework", "path": "/samwise/samwise-strategies/4-part-framework/" },

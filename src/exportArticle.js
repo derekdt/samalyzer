@@ -175,6 +175,8 @@ async function saveSourceHtml(page, url, paths) {
   localized = rewriteImageReferences(localized, imageMapping);
   localized = rewriteStylesheetReferences(localized, stylesheetMapping);
   localized = await localizeInlineCss(localized, url, paths.assetsDir, fetchResource, assetCache);
+  const leftovers = dropRemoteImageCandidates(localized, baseHost);
+  localized = leftovers.html;
 
   fs.writeFileSync(paths.html, localized, 'utf8');
   log(
@@ -182,21 +184,81 @@ async function saveSourceHtml(page, url, paths) {
       `(${imageMapping.size} image(s), ${stylesheetMapping.size} stylesheet(s), ` +
       `${assetCache.size} css-asset(s) localized)`
   );
+  if (leftovers.dropped) {
+    log(`  dropped ${leftovers.dropped} remote srcset/<source> candidate(s) with no local copy`);
+  }
+  if (leftovers.remoteSrc.length) {
+    logError(
+      `${leftovers.remoteSrc.length} image(s) still point at the live site (download failed): ` +
+        leftovers.remoteSrc.slice(0, 5).map((u) => u.split('/').pop()).join(', ')
+    );
+  }
+}
+
+// After rewriting, any srcset candidate or <picture><source> still pointing at
+// the site has no local copy. Browsers prefer those over a local <img src>, so
+// the image would break offline: drop them (and a <source> left empty) so the
+// local copy is used. <img src> values that are still remote are kept, since
+// there's nothing local to fall back to, and reported.
+function dropRemoteImageCandidates(html, baseHost) {
+  const isRemote = (u) => {
+    try {
+      return new URL(u.replace(/&amp;/g, '&')).host === baseHost;
+    } catch {
+      return false;
+    }
+  };
+  let dropped = 0;
+  const filterSrcset = (value) => {
+    const parts = value.split(/,(?=\s*\S)/).map((p) => p.trim()).filter(Boolean);
+    const kept = parts.filter((p) => !isRemote(p.replace(/\s+\d+(?:\.\d+)?[wx]$/, '')));
+    dropped += parts.length - kept.length;
+    return kept;
+  };
+
+  let out = html.replace(/<source\b[^>]*\ssrcset="([^"]*)"[^>]*>/g, (tag, value) => {
+    const kept = filterSrcset(value);
+    if (kept.length === 0) return '';
+    return tag.replace(/\ssrcset="[^"]*"/, () => ` srcset="${kept.join(', ')}"`);
+  });
+
+  const remoteSrc = [];
+  out = out.replace(/<img\b[^>]*>/g, (tag) => {
+    const src = tag.match(/\ssrc="([^"]*)"/);
+    if (src && isRemote(src[1]) && !/gravatar|s\.w\.org/.test(src[1])) remoteSrc.push(src[1]);
+    return tag.replace(/\ssrcset="([^"]*)"/, (m, value) => {
+      const kept = filterSrcset(value);
+      return kept.length ? ` srcset="${kept.join(', ')}"` : '';
+    });
+  });
+
+  return { html: out, dropped, remoteSrc };
 }
 
 async function downloadImages(page, baseUrl, imagesDir) {
   const urls = await page.evaluate(() => {
     const out = new Set();
+    // Resolve against the page so relative and unencoded URLs (e.g. file names
+    // with spaces or U+202F) come out in the same form as img.src.
+    const addSrcset = (srcset) => {
+      if (!srcset) return;
+      for (const part of srcset.split(/,(?=\s*\S)/)) {
+        const u = part.trim().replace(/\s+\d+(?:\.\d+)?[wx]$/, '');
+        if (!u) continue;
+        try {
+          out.add(new URL(u, document.baseURI).href);
+        } catch {}
+      }
+    };
     const imgs = Array.from(document.querySelectorAll('img'));
     for (const img of imgs) {
       if (img.currentSrc) out.add(img.currentSrc);
       if (img.src) out.add(img.src);
-      if (img.srcset) {
-        for (const part of img.srcset.split(',')) {
-          const u = part.trim().split(/\s+/)[0];
-          if (u) out.add(u);
-        }
-      }
+      addSrcset(img.getAttribute('srcset'));
+    }
+    // <picture><source srcset> — the browser prefers these over the <img>.
+    for (const source of document.querySelectorAll('picture source[srcset]')) {
+      addSrcset(source.getAttribute('srcset'));
     }
     return Array.from(out);
   });
@@ -244,7 +306,7 @@ async function downloadImages(page, baseUrl, imagesDir) {
           if (parsed.host === baseHost && cookieHeader) {
             headers.Cookie = cookieHeader;
           }
-          const resp = await fetch(url, { headers });
+          const resp = await fetchWithRetry(url, { headers });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const buf = Buffer.from(await resp.arrayBuffer());
           fs.writeFileSync(filepath, buf);
@@ -293,18 +355,33 @@ function makeImageFilename(url) {
   return `${hash}-${base}${ext}`;
 }
 
-function rewriteImageReferences(html, mapping) {
+// The ways a URL can appear in serialized HTML: as resolved (percent-encoded),
+// with & escaped, and decoded. The decoded form matters for file names with
+// non-ASCII characters, e.g. macOS screenshots ("…10.37.48 PM.png"),
+// where the attribute holds the raw character but img.src is "%E2%80%AF".
+function urlSpellings(url) {
+  const forms = new Set([url]);
+  try {
+    forms.add(decodeURI(url));
+  } catch {}
+  for (const f of [...forms]) forms.add(f.replace(/&/g, '&amp;'));
+  return [...forms];
+}
+
+function replaceUrls(html, mapping) {
   if (!mapping || mapping.size === 0) return html;
-  const entries = Array.from(mapping.entries()).sort((a, b) => b[0].length - a[0].length);
-  let out = html;
-  for (const [url, localPath] of entries) {
-    out = out.split(url).join(localPath);
-    const htmlEncoded = url.replace(/&/g, '&amp;');
-    if (htmlEncoded !== url) {
-      out = out.split(htmlEncoded).join(localPath);
-    }
+  const pairs = [];
+  for (const [url, localPath] of mapping.entries()) {
+    for (const form of urlSpellings(url)) pairs.push([form, localPath]);
   }
+  pairs.sort((a, b) => b[0].length - a[0].length);
+  let out = html;
+  for (const [form, localPath] of pairs) out = out.split(form).join(localPath);
   return out;
+}
+
+function rewriteImageReferences(html, mapping) {
+  return replaceUrls(html, mapping);
 }
 
 async function buildCookieHeader(page) {
@@ -314,6 +391,23 @@ async function buildCookieHeader(page) {
   } catch {
     return '';
   }
+}
+
+// fetch() with retries for transient failures (network errors, 429, 5xx).
+// A 404 or other 4xx is returned as-is: the file really isn't there.
+async function fetchWithRetry(url, options, attempts = 3) {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const resp = await fetch(url, options);
+      if (resp.status !== 429 && resp.status < 500) return resp;
+      lastErr = new Error(`HTTP ${resp.status}`);
+    } catch (err) {
+      lastErr = err;
+    }
+    if (i < attempts) await sleep(1000 * i);
+  }
+  throw lastErr;
 }
 
 function makeFetcher(cookieHeader, baseHost) {
@@ -329,7 +423,7 @@ function makeFetcher(cookieHeader, baseHost) {
     if (parsed.host === baseHost && cookieHeader) {
       headers.Cookie = cookieHeader;
     }
-    const resp = await fetch(url, { headers });
+    const resp = await fetchWithRetry(url, { headers });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     return resp;
   };
@@ -576,17 +670,7 @@ async function localizeInlineCss(html, baseUrl, assetsDir, fetchResource, assetC
 }
 
 function rewriteStylesheetReferences(html, mapping) {
-  if (!mapping || mapping.size === 0) return html;
-  const entries = Array.from(mapping.entries()).sort((a, b) => b[0].length - a[0].length);
-  let out = html;
-  for (const [url, localPath] of entries) {
-    out = out.split(url).join(localPath);
-    const htmlEncoded = url.replace(/&/g, '&amp;');
-    if (htmlEncoded !== url) {
-      out = out.split(htmlEncoded).join(localPath);
-    }
-  }
-  return out;
+  return replaceUrls(html, mapping);
 }
 
 async function ensureAllImagesLoaded(page) {
@@ -778,4 +862,4 @@ async function expandAllComments(page, { selectors, textPatterns }) {
   return { clicks: totalClicks, passes };
 }
 
-module.exports = { exportArticle, saveSourceHtml, ensureAllImagesLoaded, unwrapImageLinks };
+module.exports = { exportArticle, saveSourceHtml, ensureAllImagesLoaded, unwrapImageLinks, expandAllComments };

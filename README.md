@@ -57,11 +57,21 @@ All generated output lives under `./gen/` (gitignored in full, so future sibling
   - every `<link rel="stylesheet">` and any `@import`ed CSS → `source/styles/` (CSS `url(...)` refs rewritten to `../assets/`)
   - fonts and background images referenced from downloaded CSS **and** inline `<style>` blocks / `style=""` attributes → `source/assets/`
 
+  - `<picture><source srcset>` images, which browsers prefer over the `<img>` inside them → `source/images/`
+
+  Downloads are retried on network errors and 5xx responses. Any `srcset` / `<source>` candidate that still points at the site afterwards (no local copy) is removed so the browser uses the local image; an `<img>` whose download failed (usually a 404 on the site itself) is left pointing at the site and reported in the log.
+
   Scripts, favicons, and decorative avatars/emoji (Gravatar, `s.w.org`) are intentionally **not** downloaded. Open `index.html` directly from disk without a network connection.
 - Registry: `./gen/daily-briefings/registry.json` — every article found in the archive (`url`, `title`, `publishedDate`), newest first. Discovery stops at the first article already in the registry, so routine runs only read the first archive page or two.
 - What's already exported is not stored anywhere: each run scans the briefing folders. A briefing counts as exported when its folder has `export.pdf`, `source/index.html` and `metadata.json` (the URL comes from `metadata.json`). Every registry article without a complete folder is exported, oldest gaps included. To force one briefing to re-export, delete its folder.
 
 The whole `gen/` folder is gitignored.
+
+## Articles
+
+`npm run articles` runs the same export as `npm start`, against the Articles archive (`/category/articles/`) instead of `/blog-2/`. Output goes to `./gen/articles/` in the same layout (`YYYY-MM-DD_slug/export.pdf`, `metadata.json`, `source/`), with its own `registry.json`. Every `npm start` flag works, e.g. `npm run articles -- --dry-run`.
+
+Articles are also listed in the `/blog-2/` archive, so each one is exported in both `gen/daily-briefings/` and `gen/articles/`.
 
 ## Trades
 
@@ -152,16 +162,44 @@ Each folder has `source/index.html` (with `images/`, `styles/` and `assets/` bes
 
 Each run overwrites the four exports. The page list lives in `strategyPages` in `config.json`.
 
+## Investing Basics
+
+`npm run investing-basics` saves every section page of Investing Basics chapters 1–5 as self-contained HTML (no PDF). Each chapter is several pages (1.1, 1.2, … and a Q&A page) linked by a row of section buttons. The command reads those buttons each run, so new sections are picked up automatically.
+
+```bash
+npm run investing-basics                 # all configured chapters
+npm run investing-basics -- --chapter 3  # one chapter
+npm run investing-basics -- --dry-run    # list the sections found, save nothing
+```
+
+Output, one folder per section, named after its button label:
+
+```
+gen/investing-basics/
+  chapter-1/
+    1.1-intro/
+      metadata.json
+      source/index.html   (+ images/, styles/, assets/)
+    1.2-mitigating-risk/
+    …
+    1.6-q-and-a/
+  chapter-2/
+  …
+```
+
+`metadata.json` has `chapter`, `chapterTitle` (from the Investing Basics index page), `section` (e.g. `"1.2"`), `sectionLabel`, `title`, `url`, `commentCount`, `exportedAt` and `sourcePath`. Before saving, every collapsed section is opened, all Q&A comments and replies are expanded, and links between Investing Basics pages are pointed at the local copies. Each run overwrites the exports. The chapter list is `investingBasics.chapters` in `config.json` (each chapter's first page).
+
 ## Configuration
 
 `config.json` (committed) controls everything that isn't a secret:
 
 | Key | Purpose |
 | --- | --- |
-| `baseUrl`, `archivePath`, `loginPath`, `tradesPath`, `qqqTablesPath` | Site URLs. |
+| `baseUrl`, `archivePath`, `articlesArchivePath`, `loginPath`, `tradesPath`, `qqqTablesPath` | Site URLs. |
+| `investingBasics` | `indexPath` (chapter titles are read from it) and `chapters: [{ number, path }]`, each chapter's first page, for `npm run investing-basics`. |
 | `strategyPages` | `[{ name, path }]` pages saved by `npm run strategy`; the folder name is the slugged `name`. |
 | `portfolioTypes` | Portfolio name → `options` / `common_stock`, used for `type` in `trades.json`. |
-| `genDir` | Root directory for all generated output: `daily-briefings/` (with its `registry.json`), `trades.json`, `qqq-tables/`, `samwise-strategy/`. |
+| `genDir` | Root directory for all generated output: `daily-briefings/` and `articles/` (each with its `registry.json`), `trades.json`, `qqq-tables/`, `samwise-strategy/`, `investing-basics/`. |
 | `delayBetweenArticlesMs`, `delayBetweenPagesMs` | `[min, max]` random delays in ms. Be polite. |
 | `pdfFormat` | `"Letter"`, `"A4"`, etc. — any Puppeteer format string. |
 | `headless` | `true` for background runs, `false` for visible browser. |

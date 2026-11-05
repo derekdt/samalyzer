@@ -30,9 +30,20 @@ function applyCliOverrides(config, flags) {
   return out;
 }
 
+// Paginated archives exported by this command. Each has its own output folder
+// and registry; `npm run articles` is `--collection articles`.
+const COLLECTIONS = {
+  'daily-briefings': { archivePath: (c) => c.archivePath, dir: 'daily-briefings' },
+  articles: { archivePath: (c) => c.articlesArchivePath || '/category/articles/', dir: 'articles' },
+};
+
 function printHelp() {
   console.log(`
 Samalyzer — Sam Weiss Newsletter Daily Briefing Archiver
+
+Collections (default: daily-briefings, from /blog-2/):
+  npm run articles -- <flags>             Same flags, for the Articles archive (/category/articles/) → gen/articles/.
+  npm start -- --collection <name>        daily-briefings | articles
 
 Usage:
   npm start                               Full run: login, discover, export missing daily briefings.
@@ -60,8 +71,15 @@ async function run() {
   const baseConfig = loadConfig();
   const config = applyCliOverrides(baseConfig, flags);
 
+  const collectionName = typeof flags.collection === 'string' ? flags.collection : 'daily-briefings';
+  const collection = COLLECTIONS[collectionName];
+  if (!collection) {
+    throw new Error(`unknown --collection "${collectionName}" (expected: ${Object.keys(COLLECTIONS).join(', ')})`);
+  }
+  config.archivePath = collection.archivePath(config);
+
   const genDir = path.resolve(config.genDir || './gen');
-  config.outputDir = path.join(genDir, 'daily-briefings');
+  config.outputDir = path.join(genDir, collection.dir);
   config.registryPath = path.join(config.outputDir, 'registry.json');
 
   if (!fs.existsSync(config.outputDir)) fs.mkdirSync(config.outputDir, { recursive: true });
@@ -76,6 +94,7 @@ async function run() {
   const singleUrl = typeof flags.url === 'string' ? flags.url : null;
   const maxArticles = config.maxArticles ? Number(config.maxArticles) : null;
 
+  log(`collection: ${collectionName} (${config.archivePath} → ${config.outputDir})`);
   log(`config: headless=${config.headless}, genDir=${genDir}`);
   log(`on disk: ${manifest.count()} briefings already exported`);
   if (manifest.incomplete.length) {
