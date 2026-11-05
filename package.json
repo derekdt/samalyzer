@@ -10,7 +10,9 @@
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "trades": "node src/trades.js",
+    "qqq-tables": "node src/qqqTables.js"
   },
   "engines": {
     "node": ">=18"
