@@ -142,7 +142,9 @@ Each CSV has:
   - anything else (weekday names, "Total") is kept as text
 - The same columns again with a `_raw` suffix, holding each cell exactly as published.
 
-The page is read with JavaScript disabled, so rows come out in Sam's published order rather than whatever sort the interactive table widget applies.
+The CSVs are read from the page with JavaScript disabled, so rows come out in Sam's published order rather than whatever sort the interactive table widget applies.
+
+The command also saves the page itself, as it renders on the site with all comments expanded, to `./gen/qqq-tables/source/index.html`. Images, stylesheets and fonts are saved alongside it, the same way as the daily briefing source pages. The tables' sort, search and paging controls don't work offline, but every row is shown. `./gen/qqq-tables/metadata.json` records the `url`, `title`, `commentCount`, the list of `tables` (name, CSV file, row counts), `exportedAt` and `sourcePath`.
 
 ## Samwise Strategy pages
 

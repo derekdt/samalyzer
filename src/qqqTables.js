@@ -9,6 +9,8 @@ const puppeteer = require('puppeteer');
 
 const { log, logError, parseCliArgs } = require('./util');
 const { login } = require('./auth');
+const { saveSourceHtml, ensureAllImagesLoaded, unwrapImageLinks, expandAllComments } = require('./exportArticle');
+const { prepareForSave } = require('./strategy');
 
 function loadConfig() {
   const cfgPath = path.resolve(__dirname, '..', 'config.json');
@@ -180,58 +182,101 @@ async function run() {
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
-  let tables;
+  const assertAuthenticated = async (page) => {
+    const html = await page.content();
+    if ((config.paywallMarker && html.includes(config.paywallMarker)) || (await page.$('input[name="pwd"]'))) {
+      throw new Error('Tables page is showing a login/paywall prompt; session is not authenticated');
+    }
+  };
+
   try {
     const page = await browser.newPage();
     page.setDefaultNavigationTimeout(config.navigationTimeoutMs || 60000);
     await login(page, config);
 
+    // 1. CSVs, from the page as published (JavaScript off).
     await page.setJavaScriptEnabled(false);
     log(`loading ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded' });
-    const html = await page.content();
-    if ((config.paywallMarker && html.includes(config.paywallMarker)) || (await page.$('input[name="pwd"]'))) {
-      throw new Error('Tables page is showing a login/paywall prompt; session is not authenticated');
+    await assertAuthenticated(page);
+    const tables = (await extractTables(page)).filter((t) => t.header.length > 0 && t.rows.length > 0);
+    if (tables.length === 0) {
+      throw new Error('No tables found on the page; the layout may have changed. No files written.');
     }
-    tables = await extractTables(page);
+
+    const outputs = [];
+    const usedNames = new Set();
+    for (const t of tables) {
+      const name = t.heading ? tableName(t.heading) : t.id || `table-${outputs.length + 1}`;
+      let file = `${slug(name)}.csv`;
+      for (let n = 2; usedNames.has(file); n++) file = `${slug(name)}-${n}.csv`;
+      usedNames.add(file);
+      const built = buildCsv(t);
+      outputs.push({ name, file, ...built });
+    }
+
+    log(`found ${outputs.length} tables:`);
+    for (const o of outputs) {
+      log(`  ${o.file}  (${o.dataRows} rows${o.summaryRows ? ` + ${o.summaryRows} summary` : ''})`);
+      for (const w of o.warnings) log(`    warning: ${w}`);
+    }
+
+    if (dryRun) {
+      log('--dry-run set; no files written');
+      return;
+    }
+
+    fs.mkdirSync(outDir, { recursive: true });
+    for (const o of outputs) {
+      const target = path.join(outDir, o.file);
+      fs.writeFileSync(`${target}.tmp`, o.csv);
+      fs.renameSync(`${target}.tmp`, target);
+    }
+    log(`wrote ${outputs.length} CSV files to ${outDir}`);
+
+    // 2. Self-contained copy of the page as it renders on the site
+    //    (JavaScript on), with comments and collapsed sections expanded.
+    try {
+      await page.setJavaScriptEnabled(true);
+      await page.goto(url, { waitUntil: 'networkidle2' });
+      await assertAuthenticated(page);
+      const expanded = await expandAllComments(page, {
+        selectors: config.commentExpanderSelectors || [],
+        textPatterns: config.commentExpanderTextPatterns || [],
+      });
+      const { opened } = await prepareForSave(page, {});
+      await ensureAllImagesLoaded(page);
+      await unwrapImageLinks(page);
+      const info = await page.evaluate(() => ({
+        title: document.title.replace(/\s*[–-]\s*Sam Weiss\s*$/, '').trim(),
+        commentCount: document.querySelectorAll('.wpd-comment').length,
+      }));
+      log(`page: ${info.commentCount} comment(s) (${expanded.clicks} expand click(s)), opened ${opened} section(s)`);
+
+      const sourceDir = path.join(outDir, 'source');
+      await saveSourceHtml(page, url, {
+        sourceDir,
+        html: path.join(sourceDir, 'index.html'),
+        imagesDir: path.join(sourceDir, 'images'),
+        stylesDir: path.join(sourceDir, 'styles'),
+        assetsDir: path.join(sourceDir, 'assets'),
+      });
+      const metadata = {
+        url,
+        title: info.title,
+        commentCount: info.commentCount,
+        tables: outputs.map((o) => ({ name: o.name, file: o.file, rows: o.dataRows, summaryRows: o.summaryRows })),
+        exportedAt: new Date().toISOString(),
+        sourcePath: 'source',
+      };
+      fs.writeFileSync(path.join(outDir, 'metadata.json'), `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
+    } catch (err) {
+      process.exitCode = 1;
+      logError(`CSVs written, but saving the source HTML failed: ${err.message}`);
+    }
   } finally {
     await browser.close();
   }
-
-  tables = tables.filter((t) => t.header.length > 0 && t.rows.length > 0);
-  if (tables.length === 0) {
-    throw new Error('No tables found on the page; the layout may have changed. No files written.');
-  }
-
-  const outputs = [];
-  const usedNames = new Set();
-  for (const t of tables) {
-    const name = t.heading ? tableName(t.heading) : t.id || `table-${outputs.length + 1}`;
-    let file = `${slug(name)}.csv`;
-    for (let n = 2; usedNames.has(file); n++) file = `${slug(name)}-${n}.csv`;
-    usedNames.add(file);
-    const built = buildCsv(t);
-    outputs.push({ name, file, ...built });
-  }
-
-  log(`found ${outputs.length} tables:`);
-  for (const o of outputs) {
-    log(`  ${o.file}  (${o.dataRows} rows${o.summaryRows ? ` + ${o.summaryRows} summary` : ''})`);
-    for (const w of o.warnings) log(`    warning: ${w}`);
-  }
-
-  if (dryRun) {
-    log('--dry-run set; no files written');
-    return;
-  }
-
-  fs.mkdirSync(outDir, { recursive: true });
-  for (const o of outputs) {
-    const target = path.join(outDir, o.file);
-    fs.writeFileSync(`${target}.tmp`, o.csv);
-    fs.renameSync(`${target}.tmp`, target);
-  }
-  log(`wrote ${outputs.length} CSV files to ${outDir}`);
 }
 
 if (require.main === module) {
